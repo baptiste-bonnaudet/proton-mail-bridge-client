@@ -1,12 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  PolicyError,
   ensureDestructiveConfirmed,
   ensureEmailActionAllowed,
   ensureSendAllowed,
   resolveRemoteDraftSync,
   sanitizeRuntimeConfig,
 } from "../dist/utils/runtime-policy.js";
+import { ValidationError, ensureValidEmails, parseEmailId } from "../dist/utils/helpers.js";
 
 function createRuntime(overrides = {}) {
   return {
@@ -95,4 +97,16 @@ test("confirmDestructive: throws when flag is on and confirmed is not true", () 
 test("confirmDestructive: passes when flag is on and confirmed is true", () => {
   const runtime = createRuntime({ confirmDestructive: true });
   assert.doesNotThrow(() => ensureDestructiveConfirmed(runtime, true, "send email to bob@example.com"));
+});
+
+test("policy denials raise PolicyError so transports can surface the message", () => {
+  const runtime = createRuntime({ readOnly: true, allowSend: false, confirmDestructive: true });
+  assert.throws(() => ensureSendAllowed(runtime), PolicyError);
+  assert.throws(() => ensureEmailActionAllowed(runtime, "archive"), PolicyError);
+  assert.throws(() => ensureDestructiveConfirmed(runtime, undefined, "delete"), PolicyError);
+});
+
+test("input validation raises ValidationError so transports can surface the message", () => {
+  assert.throws(() => parseEmailId("not-an-email-id"), ValidationError);
+  assert.throws(() => ensureValidEmails(["nope"], "to"), ValidationError);
 });

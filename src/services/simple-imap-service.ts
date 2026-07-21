@@ -38,6 +38,7 @@ import {
   sortEmailsByNewest,
   stripHtmlToText,
   summarizeCalendarText,
+  ValidationError,
 } from "../utils/helpers.js";
 import { logger, type Logger } from "../utils/logger.js";
 
@@ -508,7 +509,7 @@ export class SimpleIMAPService {
   }> {
     const trimmed = path?.trim();
     if (!trimmed) {
-      throw new Error("Folder path is required.");
+      throw new ValidationError("Folder path is required.");
     }
 
     const client = await this.ensureConnected();
@@ -529,13 +530,13 @@ export class SimpleIMAPService {
     const fromPath = path?.trim();
     const toPath = newPath?.trim();
     if (!fromPath) {
-      throw new Error("Source folder path is required.");
+      throw new ValidationError("Source folder path is required.");
     }
     if (!toPath) {
-      throw new Error("Target folder path is required.");
+      throw new ValidationError("Target folder path is required.");
     }
     if (fromPath === toPath) {
-      throw new Error("Source and target paths are identical.");
+      throw new ValidationError("Source and target paths are identical.");
     }
 
     const client = await this.ensureConnected();
@@ -559,7 +560,7 @@ export class SimpleIMAPService {
   }> {
     const trimmed = path?.trim();
     if (!trimmed) {
-      throw new Error("Folder path is required.");
+      throw new ValidationError("Folder path is required.");
     }
 
     const reservedRoots = new Set([
@@ -574,7 +575,7 @@ export class SimpleIMAPService {
       "Labels",
     ]);
     if (reservedRoots.has(trimmed)) {
-      throw new Error(`Refusing to delete reserved system folder ${trimmed}.`);
+      throw new ValidationError(`Refusing to delete reserved system folder ${trimmed}.`);
     }
 
     const client = await this.ensureConnected();
@@ -1157,7 +1158,7 @@ export class SimpleIMAPService {
 
   async emptyFolder(folder: string): Promise<{ folder: string; deleted: number }> {
     if (folder.toUpperCase() === "INBOX") {
-      throw new Error("emptyFolder cannot be used on INBOX. Move messages to Trash first.");
+      throw new ValidationError("emptyFolder cannot be used on INBOX. Move messages to Trash first.");
     }
 
     const uids: number[] = await this.withMailbox(folder, true, async (client) => {
@@ -1188,10 +1189,10 @@ export class SimpleIMAPService {
     match: BulkMatchCriteria | undefined,
   ): Promise<number[]> {
     if (emailIds !== undefined && match !== undefined) {
-      throw new Error("Provide either emailIds or match, not both");
+      throw new ValidationError("Provide either emailIds or match, not both");
     }
     if (emailIds === undefined && match === undefined) {
-      throw new Error("Provide either emailIds or match");
+      throw new ValidationError("Provide either emailIds or match");
     }
 
     if (emailIds !== undefined) {
@@ -2144,7 +2145,7 @@ export class SimpleIMAPService {
       // change to avoid fetching the wrong message with a recycled UID.
       const message = await client.fetchOne(String(uid), FETCH_DETAIL_QUERY, { uid: true });
       if (!message || !message.source) {
-        throw new Error(`Email not found for id ${emailId}`);
+        throw new ValidationError(`Email not found for id ${emailId}`);
       }
 
       const summary = this.toSummary(folder, message);
@@ -2320,7 +2321,7 @@ export class SimpleIMAPService {
     );
 
     if (!match) {
-      throw new Error(`Attachment ${attachmentId} not found on email ${detail.id}`);
+      throw new ValidationError(`Attachment  not found on email ${detail.id}`);
     }
 
     return match;
@@ -2331,7 +2332,7 @@ export class SimpleIMAPService {
     const estimatedSize = await this.withMailbox(folder, true, async (client) => {
       const message = await client.fetchOne(String(uid), FETCH_SUMMARY_QUERY, { uid: true });
       if (!message) {
-        throw new Error(`Email not found for id ${emailId}`);
+        throw new ValidationError(`Email not found for id ${emailId}`);
       }
 
       const attachment = extractAttachments(message.bodyStructure).find(
@@ -2346,7 +2347,7 @@ export class SimpleIMAPService {
 
     const maxInlineBytes = (this.config.runtime.maxInlineBytes ?? 40) * 1024;
     if (estimatedSize !== undefined && estimatedSize > maxInlineBytes * 1.5) {
-      throw new Error(
+      throw new ValidationError(
         `Attachment too large for inline delivery (estimated ${estimatedSize} bytes). Use saveTo parameter.`,
       );
     }
@@ -2456,7 +2457,7 @@ export class SimpleIMAPService {
 
     const mailbox = client.mailbox || undefined;
     if (mailbox?.uidValidity?.toString() !== expectedUidValidity) {
-      throw new Error(UID_VALIDITY_MISMATCH_ERROR);
+      throw new ValidationError(UID_VALIDITY_MISMATCH_ERROR);
     }
   }
 
@@ -2491,7 +2492,7 @@ export class SimpleIMAPService {
   private guardAttachmentOutputPath(outputPath: string): void {
     const allowDir = process.env.PROTONMAIL_ALLOW_FILE_DOWNLOAD_DIR?.trim();
     if (!allowDir) {
-      throw new Error("outputPath requires PROTONMAIL_ALLOW_FILE_DOWNLOAD_DIR to be configured.");
+      throw new ValidationError("outputPath requires PROTONMAIL_ALLOW_FILE_DOWNLOAD_DIR to be configured.");
     }
 
     const targetPath = resolve(outputPath);
@@ -2509,7 +2510,7 @@ export class SimpleIMAPService {
         try {
           targetRealPath = realpathSync(dirname(targetPath)) + sep + basename(targetPath);
         } catch {
-          throw new Error(`Output directory does not exist: ${dirname(targetPath)}`);
+          throw new ValidationError(`Output directory does not exist: ${dirname(targetPath)}`);
         }
       } else {
         throw error;
@@ -2517,7 +2518,7 @@ export class SimpleIMAPService {
     }
 
     if (!targetRealPath.startsWith(`${allowedRealPath}/`) && targetRealPath !== allowedRealPath) {
-      throw new Error("outputPath path escapes the allowed directory.");
+      throw new ValidationError("outputPath path escapes the allowed directory.");
     }
   }
 

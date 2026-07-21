@@ -9,6 +9,17 @@ import type {
 const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 const EMAIL_ID_SEPARATOR = "::";
 
+/**
+ * Raised when caller-supplied input is malformed. The message is meant for the
+ * caller (model or CLI user), so transport layers should surface it verbatim.
+ */
+export class ValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ValidationError";
+  }
+}
+
 export function parseEmails(value?: string): string[] {
   if (!value) {
     return [];
@@ -27,7 +38,7 @@ export function isValidEmail(email: string): boolean {
 export function ensureValidEmails(emails: string[], fieldName: string): void {
   const invalid = emails.filter((email) => !isValidEmail(email));
   if (invalid.length > 0) {
-    throw new Error(`Invalid ${fieldName} email address(es): ${invalid.join(", ")}`);
+    throw new ValidationError(`Invalid ${fieldName} email address(es): ${invalid.join(", ")}`);
   }
 }
 
@@ -38,7 +49,7 @@ export function createEmailId(folder: string, uid: number): string {
 export function parseEmailId(emailId: string): { folder: string; uid: number } {
   const index = emailId.lastIndexOf(EMAIL_ID_SEPARATOR);
   if (index === -1) {
-    throw new Error(
+    throw new ValidationError(
       "Invalid emailId. Expected the email identifier returned by get_emails or search_emails.",
     );
   }
@@ -47,7 +58,7 @@ export function parseEmailId(emailId: string): { folder: string; uid: number } {
   const uid = Number(emailId.slice(index + EMAIL_ID_SEPARATOR.length));
 
   if (!folder || !Number.isInteger(uid) || uid <= 0) {
-    throw new Error(
+    throw new ValidationError(
       "Invalid emailId. Expected the email identifier returned by get_emails or search_emails.",
     );
   }
@@ -230,7 +241,7 @@ export function parseDateInput(value?: string): Date | undefined {
 
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    throw new Error(`Invalid date value: ${value}`);
+    throw new ValidationError(`Invalid date value: ${value}`);
   }
 
   return date;

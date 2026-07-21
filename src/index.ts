@@ -48,9 +48,11 @@ import {
   parseEmails,
   renderMarkdown,
   stringifyForJson,
+  ValidationError,
 } from "./utils/helpers.js";
 import { logger } from "./utils/logger.js";
 import {
+  PolicyError,
   ensureDestructiveConfirmed,
   ensureEmailActionAllowed,
   ensureMailboxWriteAllowed,
@@ -4957,10 +4959,16 @@ export function createServer(
       if (error instanceof McpError) {
         throw error;
       }
+      // Policy denials and input validation failures carry instructions the
+      // model needs to self-correct (e.g. "call again with confirmed: true"),
+      // so they must not be masked as internal errors.
+      if (error instanceof PolicyError || error instanceof ValidationError) {
+        throw new McpError(ErrorCode.InvalidParams, error.message);
+      }
       logger.error("Tool call failed", "MCPServer", { name, error });
       throw new McpError(
         ErrorCode.InternalError,
-        "An internal error occurred. Check get_logs for details.",
+        "An internal error occurred. Check the server logs (get_logs tool, or the process stderr) for details.",
       );
     }
   });
