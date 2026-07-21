@@ -38,6 +38,33 @@ test("buildClaudeDesktopServerConfig points Claude Desktop at dist/index.js", ()
   assert.equal(serverConfig.env.PROTONMAIL_USERNAME_FILE, "/run/secrets/user");
 });
 
+test("buildClaudeDesktopServerConfig keeps an explicit env when includeEnv is false", () => {
+  // Regression: the setup wizard passes includeEnv: false plus the env it
+  // collected interactively; that env must survive into the written config.
+  const { serverConfig } = buildClaudeDesktopServerConfig({
+    cwd: "/tmp/protonmail-pro-mcp",
+    command: "/usr/local/bin/node",
+    includeEnv: false,
+    env: {
+      PROTONMAIL_USERNAME: "user@proton.me",
+      PROTONMAIL_PASSWORD: "bridge-pass",
+    },
+  });
+
+  assert.equal(serverConfig.env.PROTONMAIL_USERNAME, "user@proton.me");
+  assert.equal(serverConfig.env.PROTONMAIL_PASSWORD, "bridge-pass");
+});
+
+test("buildClaudeDesktopServerConfig omits env entirely when includeEnv is false and none is given", () => {
+  const { serverConfig } = buildClaudeDesktopServerConfig({
+    cwd: "/tmp/protonmail-pro-mcp",
+    command: "/usr/local/bin/node",
+    includeEnv: false,
+  });
+
+  assert.equal("env" in serverConfig, false);
+});
+
 test("buildClaudeDesktopServerConfig prefers a dedicated runtime directory when provided", () => {
   const { serverConfig } = buildClaudeDesktopServerConfig({
     cwd: "/tmp/source-repo",

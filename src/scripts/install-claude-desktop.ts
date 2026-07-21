@@ -162,13 +162,10 @@ export function buildClaudeDesktopServerConfig(
 ): { serverName: string; serverConfig: ClaudeDesktopServerConfig } {
   const cwd = resolve(options.runtimeDir || options.cwd || resolveSourceRepoRoot());
   const command = options.command || process.execPath;
-  const env =
-    options.includeEnv === false
-      ? undefined
-      : {
-          ...collectInstallEnv(),
-          ...(options.env ?? {}),
-        };
+  const env = {
+    ...(options.includeEnv === false ? {} : collectInstallEnv()),
+    ...(options.env ?? {}),
+  };
 
   return {
     serverName: options.serverName || DEFAULT_SERVER_NAME,
