@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { ensurePrivateDir, ensurePrivateFile } from "../utils/secure-fs.js";
 import type {
   ActionableThreadSummary,
   EmailSummary,
@@ -1150,8 +1151,9 @@ export class LocalIndexService {
       return this.db;
     }
 
-    await mkdir(dirname(this.dbPath), { recursive: true });
+    await ensurePrivateDir(dirname(this.dbPath));
     const db = this.db ?? new Database(this.dbPath);
+    await ensurePrivateFile(this.dbPath);
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
     db.pragma("synchronous = NORMAL");

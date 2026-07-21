@@ -5,6 +5,7 @@ import {
   buildClaudeDesktopServerConfig,
   collectInstallEnv,
   mergeClaudeDesktopConfig,
+  redactInstallResult,
   resolveClaudeDesktopConfigPath,
   resolveClaudeDesktopRuntimeDir,
 } from "../dist/scripts/install-claude-desktop.js";
@@ -98,6 +99,26 @@ test("mergeClaudeDesktopConfig preserves existing servers", () => {
 
   assert.equal(merged.theme, "dark");
   assert.deepEqual(Object.keys(merged.mcpServers).sort(), ["existing", "proton-mail-bridge"]);
+});
+
+test("redactInstallResult hides secret env values but keeps the rest", () => {
+  const redacted = redactInstallResult({
+    configPath: "/tmp/claude.json",
+    serverConfig: {
+      command: "node",
+      args: ["dist/index.js"],
+      cwd: "/tmp",
+      env: {
+        PROTONMAIL_USERNAME: "user@proton.me",
+        PROTONMAIL_PASSWORD: "bridge-pass",
+        PROTONMAIL_API_TOKEN_FILE: "/run/secrets/token",
+      },
+    },
+  });
+
+  assert.equal(redacted.serverConfig.env.PROTONMAIL_USERNAME, "user@proton.me");
+  assert.equal(redacted.serverConfig.env.PROTONMAIL_PASSWORD, "[redacted]");
+  assert.equal(redacted.serverConfig.env.PROTONMAIL_API_TOKEN_FILE, "[redacted]");
 });
 
 test("resolveClaudeDesktopConfigPath honors explicit paths", () => {

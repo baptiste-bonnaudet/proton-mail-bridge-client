@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { constants as fsConstants } from "node:fs";
-import { access, copyFile, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, copyFile, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -271,6 +271,7 @@ async function backupConfigIfPresent(configPath: string): Promise<string | undef
     await access(configPath, fsConstants.F_OK);
     const backupPath = `${configPath}.bak-${new Date().toISOString().replace(/[:.]/g, "-")}`;
     await copyFile(configPath, backupPath);
+    await chmod(backupPath, 0o600);
     return backupPath;
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "ENOENT") {
@@ -300,7 +301,9 @@ export async function installClaudeDesktopConfig(options: InstallOptions = {}): 
 
   await mkdir(dirname(configPath), { recursive: true });
   const backupPath = await backupConfigIfPresent(configPath);
-  await writeFile(configPath, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+  // The config may embed the Bridge password; keep it out of reach of other local users.
+  await writeFile(configPath, `${JSON.stringify(merged, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  await chmod(configPath, 0o600);
 
   return {
     configPath,
@@ -313,10 +316,29 @@ export async function installClaudeDesktopConfig(options: InstallOptions = {}): 
   };
 }
 
+const SENSITIVE_ENV_KEY = /password|secret|token/i;
+
+/** Replace secret-bearing env values so install results can be printed or logged. */
+export function redactInstallResult<T extends { serverConfig: ClaudeDesktopServerConfig }>(result: T): T {
+  const env = result.serverConfig.env;
+  if (!env) {
+    return result;
+  }
+  return {
+    ...result,
+    serverConfig: {
+      ...result.serverConfig,
+      env: Object.fromEntries(
+        Object.entries(env).map(([key, value]) => [key, SENSITIVE_ENV_KEY.test(key) ? "[redacted]" : value]),
+      ),
+    },
+  };
+}
+
 async function main(): Promise<void> {
   const options = parseCliArgs(process.argv.slice(2));
   const result = await installClaudeDesktopConfig(options);
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify(redactInstallResult(result), null, 2)}\n`);
 }
 
 const isDirectExecution =

@@ -1,6 +1,7 @@
-import { appendFile, mkdir, readFile, rename, stat } from "node:fs/promises";
+import { appendFile, readFile, rename, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { AuditEntry, ProtonMailConfig } from "../types/index.js";
+import { PRIVATE_FILE_MODE, ensurePrivateDir } from "../utils/secure-fs.js";
 
 const MAX_AUDIT_BYTES = 5 * 1024 * 1024;
 const MAX_AUDIT_LINES = 10000;
@@ -20,7 +21,7 @@ export class AuditService {
   }
 
   async record(entry: AuditEntry): Promise<void> {
-    await mkdir(dirname(this.auditPath), { recursive: true });
+    await ensurePrivateDir(dirname(this.auditPath));
     const persistedEntry: AuditEntry = {
       ...entry,
       durationMs: entry.durationMs ?? 0,
@@ -29,7 +30,10 @@ export class AuditService {
     await this.withRotateLock(async () => {
       await this.rotateIfNeeded();
       // WARNING: This audit log has no cryptographic integrity protection. Any process with filesystem access can tamper with or delete entries.
-      await appendFile(this.auditPath, `${JSON.stringify(persistedEntry)}\n`, "utf8");
+      await appendFile(this.auditPath, `${JSON.stringify(persistedEntry)}\n`, {
+        encoding: "utf8",
+        mode: PRIVATE_FILE_MODE,
+      });
     });
   }
 

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { copyFileSync } from "node:fs";
-import { mkdir, readFile, rename, rm, writeFile, readdir, unlink } from "node:fs/promises";
+import { readFile, rename, rm, writeFile, readdir, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type {
   DraftMode,
@@ -11,6 +11,7 @@ import type {
 } from "../types/index.js";
 import { extractDomain } from "../utils/helpers.js";
 import { logger, type Logger } from "../utils/logger.js";
+import { PRIVATE_FILE_MODE, ensurePrivateDir } from "../utils/secure-fs.js";
 
 interface DraftStoreFile {
   version: number;
@@ -376,10 +377,13 @@ export class DraftStoreService {
   }
 
   private async save(store: DraftStoreFile): Promise<void> {
-    await mkdir(dirname(this.draftPath), { recursive: true });
+    await ensurePrivateDir(dirname(this.draftPath));
     const tempPath = `${this.draftPath}.tmp`;
     try {
-      await writeFile(tempPath, JSON.stringify(store, null, 2), "utf8");
+      await writeFile(tempPath, JSON.stringify(store, null, 2), {
+        encoding: "utf8",
+        mode: PRIVATE_FILE_MODE,
+      });
       await rename(tempPath, this.draftPath);
     } catch (error) {
       // #17: If the write fails (disk full, permission error, etc.), the in-memory

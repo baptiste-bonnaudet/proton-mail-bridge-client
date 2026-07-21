@@ -13,7 +13,7 @@ import type { EmailAddress, EmailDetail, EmailSummary, ProtonMailConfig, SearchE
 import { ensureMailboxWriteAllowed, ensureSendAllowed, sanitizeRuntimeConfig } from "./utils/runtime-policy.js";
 import { isValidEmail, lowerCaseAddress, parseEmails, ensureValidEmails } from "./utils/helpers.js";
 import { getClaudeDesktopInstallStatus } from "./scripts/check-claude-desktop.js";
-import { installClaudeDesktopConfig } from "./scripts/install-claude-desktop.js";
+import { installClaudeDesktopConfig, redactInstallResult } from "./scripts/install-claude-desktop.js";
 import { runClaudeDesktopSetupWizard } from "./scripts/setup-claude-desktop.js";
 
 let _pkgVersion: string | undefined;
@@ -1670,7 +1670,7 @@ async function runClaude(parsed: ParsedCliArgs): Promise<void> {
     case "install":
     case "update": {
       const result = await installClaudeDesktopConfig();
-      process.stdout.write(json(result));
+      process.stdout.write(json(redactInstallResult(result)));
       return;
     }
     case "check":
