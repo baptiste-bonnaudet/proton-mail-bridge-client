@@ -247,6 +247,8 @@ function createParsedAttachmentId(
   return attachment.checksum || attachment.cid || `attachment-${index + 1}`;
 }
 
+const MAX_CACHED_MESSAGES = 1000;
+
 export class SimpleIMAPService {
   private client?: ImapFlow;
   private folderCache?: FolderInfo[];
@@ -266,6 +268,23 @@ export class SimpleIMAPService {
     private readonly log: Logger = logger,
     private readonly opDelayMs = 0,
   ) {}
+
+  /**
+   * Bounded insert: the cache only ever holds summaries (never bodies), and
+   * oldest entries are evicted first so a long-lived session cannot grow it
+   * without limit. Consumers tolerate misses; this is purely best-effort.
+   */
+  private cacheMessage(id: string, summary: EmailSummary): void {
+    if (this.messageCache.has(id)) {
+      this.messageCache.delete(id);
+    }
+    this.messageCache.set(id, summary);
+    while (this.messageCache.size > MAX_CACHED_MESSAGES) {
+      const oldest = this.messageCache.keys().next().value;
+      if (oldest === undefined) break;
+      this.messageCache.delete(oldest);
+    }
+  }
 
   /**
    * Provide the last-synced UIDVALIDITY per folder (from the local index).
@@ -654,7 +673,7 @@ export class SimpleIMAPService {
               ? await this.enrichSummaryFromParsed(summary, await this.parseSource(message.source), false)
               : summary;
           emails.push(enriched);
-          this.messageCache.set(enriched.id, enriched);
+          this.cacheMessage(enriched.id, enriched);
         }
       } else {
         const endSeq = total - offset;
@@ -667,7 +686,7 @@ export class SimpleIMAPService {
               ? await this.enrichSummaryFromParsed(summary, await this.parseSource(message.source), false)
               : summary;
           emails.push(enriched);
-          this.messageCache.set(enriched.id, enriched);
+          this.cacheMessage(enriched.id, enriched);
         }
       }
 
@@ -738,7 +757,7 @@ export class SimpleIMAPService {
               ? await this.enrichSummaryFromParsed(summary, await this.parseSource(message.source), false)
               : summary;
           results.push(enriched);
-          this.messageCache.set(enriched.id, enriched);
+          this.cacheMessage(enriched.id, enriched);
         }
 
         // FIX #3: verified — hasAttachment, attachmentName, label, threadId handled above
@@ -990,7 +1009,7 @@ export class SimpleIMAPService {
     this.messageCache.delete(emailId);
     const targetEmailId = targetUid ? createEmailId(targetFolder, targetUid) : undefined;
     if (cached && targetUid && targetEmailId) {
-      this.messageCache.set(targetEmailId, {
+      this.cacheMessage(targetEmailId, {
         ...cached,
         id: targetEmailId,
         folder: targetFolder,
@@ -1774,7 +1793,7 @@ export class SimpleIMAPService {
       for await (const message of client.fetch(`${plan.startUid}:${plan.endUid}`, FETCH_INDEX_QUERY, { uid: true })) {
         const summary = this.toSummary(folder, message);
         emails.push(summary);
-        this.messageCache.set(summary.id, summary);
+        this.cacheMessage(summary.id, summary);
       }
 
       const highestUid = emails.reduce((max, email) => Math.max(max, email.uid), 0) || plan.highestKnownUid;
@@ -2174,7 +2193,10 @@ export class SimpleIMAPService {
         headers: this.mapHeaders(parsed),
       };
 
-      this.messageCache.set(detail.id, detail);
+      // Cache the summary only: nothing reads bodies back from this cache
+      // (details are always re-fetched live), so keeping text/html/headers
+      // here would only grow memory.
+      this.cacheMessage(enriched.id, enriched);
       return { detail, parsed };
     });
   }
@@ -2314,7 +2336,7 @@ export class SimpleIMAPService {
       return;
     }
 
-    this.messageCache.set(emailId, updater(cached));
+    this.cacheMessage(emailId, updater(cached));
   }
 
   private async getParsedAttachment(
