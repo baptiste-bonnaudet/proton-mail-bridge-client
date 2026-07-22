@@ -25,6 +25,7 @@ import {
   normalizeMessageId,
   normalizeSubjectForThread,
   sortEmailsByNewest,
+  ValidationError,
 } from "../utils/helpers.js";
 import { logger, type Logger } from "../utils/logger.js";
 
@@ -1589,12 +1590,29 @@ export class LocalIndexService {
     const conditions: string[] = [];
 
     if (filters.query) {
-      const ftsIds = this.searchFtsIds(db, filters.query, limitHint);
-      if (ftsIds.length === 0) {
-        return [];
+      const fts = this.searchFtsIds(db, filters.query, limitHint);
+      if (fts.status === "unsearchable") {
+        throw new ValidationError(
+          "Search query has no searchable keywords. FTS operators (NOT/AND/OR/NEAR) and '-' exclusions are not supported; provide at least one plain keyword.",
+        );
       }
-      conditions.push(`email_id IN (${ftsIds.map(() => "?").join(", ")})`);
-      params.push(...ftsIds);
+      if (fts.status === "failed") {
+        // Real fallback: LIKE-match every term against the indexed metadata
+        // columns instead of silently returning zero results.
+        for (const term of fts.terms) {
+          const like = `%${escapeLike(term.toLowerCase())}%`;
+          conditions.push(
+            `(LOWER(subject) LIKE ? ESCAPE '\\' OR LOWER(COALESCE(preview, '')) LIKE ? ESCAPE '\\' OR LOWER(from_json) LIKE ? ESCAPE '\\' OR LOWER(to_json) LIKE ? ESCAPE '\\')`,
+          );
+          params.push(like, like, like, like);
+        }
+      } else {
+        if (fts.ids.length === 0) {
+          return [];
+        }
+        conditions.push(`email_id IN (${fts.ids.map(() => "?").join(", ")})`);
+        params.push(...fts.ids);
+      }
     }
 
     if (filters.folder) {
@@ -1647,7 +1665,14 @@ export class LocalIndexService {
       .map((row) => this.rowToEmailSummary(row as MessageRow));
   }
 
-  private searchFtsIds(db: Database.Database, query: string, limit: number): string[] {
+  private searchFtsIds(
+    db: Database.Database,
+    query: string,
+    limit: number,
+  ):
+    | { status: "ok"; ids: string[] }
+    | { status: "unsearchable" }
+    | { status: "failed"; terms: string[] } {
     const parsed = parseSearchQuery(query);
     const FTS5_OPERATORS = new Set(["not", "and", "or", "near"]);
     const safeTerms = parsed.residualTerms.filter(
@@ -1658,20 +1683,21 @@ export class LocalIndexService {
       .join(" AND ");
 
     if (!match) {
-      return [];
+      return { status: "unsearchable" };
     }
 
     try {
-      return db
+      const ids = db
         .prepare(`SELECT email_id FROM messages_fts WHERE messages_fts MATCH ? LIMIT ?`)
         .all(match, limit)
         .map((row) => String((row as { email_id: string }).email_id));
+      return { status: "ok", ids };
     } catch (error) {
-      this.log.warn("FTS search failed, falling back to metadata scan", "LocalIndexService", {
+      this.log.warn("FTS search failed, falling back to metadata LIKE scan", "LocalIndexService", {
         query,
         error,
       });
-      return [];
+      return { status: "failed", terms: safeTerms };
     }
   }
 

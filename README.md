@@ -30,7 +30,7 @@ Give Claude Desktop (or Cline, or any MCP client) full access to your Proton Mai
 
 - **Claude reads and manages your Proton Mail** — triage, reply, draft, archive, search, move, batch-act on threads, pull attachments
 - **Full CLI** — same 40+ commands, scriptable and pipeable, works in cron and shell scripts
-- **Fast local search** — full-text search across your inbox without hitting IMAP on every query
+- **Fast local search** — instant search over subjects, senders, labels, and attachment names without hitting IMAP; body text is searched live over IMAP
 - **Safety controls** — read-only mode, send gate, destructive-action confirmation, per-action allowlist
 - **Privacy-native** — no third-party email service involved; your mail stays on your machine
 

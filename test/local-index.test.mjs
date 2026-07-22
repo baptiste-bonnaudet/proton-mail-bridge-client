@@ -42,6 +42,25 @@ function createConfig(dataDir) {
   };
 }
 
+test("indexed search rejects operator-only queries instead of returning empty", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "protonmail-index-test-"));
+  const service = new LocalIndexService(createConfig(dataDir));
+
+  try {
+    await assert.rejects(
+      () => service.search({ query: "NOT" }),
+      /no searchable keywords/i,
+    );
+    await assert.rejects(
+      () => service.search({ query: "-excluded" }),
+      /no searchable keywords/i,
+    );
+  } finally {
+    await service.close?.();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("getFolderUidValidity returns the checkpointed value per folder", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "protonmail-index-test-"));
   const service = new LocalIndexService(createConfig(dataDir));

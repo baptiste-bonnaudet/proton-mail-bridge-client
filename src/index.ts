@@ -1132,7 +1132,7 @@ const TOOLS = [
         limitPerFolder: { type: "number", description: "Override the per-folder fetch limit." },
         includeAttachmentText: {
           type: "boolean",
-          description: "Extract searchable text from text-like attachments while syncing.",
+          description: "Reserved for future use: attachment text extraction is not implemented yet, so this flag currently has no effect.",
           default: true,
         },
       },
@@ -1152,7 +1152,7 @@ const TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        query: { type: "string", description: "Free-text query across indexed metadata." },
+        query: { type: "string", description: "Free-text query across indexed metadata: subject, sender/recipients, folder, labels, and attachment filenames. Message body text is NOT indexed; use search_emails with query for live body search." },
         folder: { type: "string", description: "Folder filter." },
         label: { type: "string", description: "Folder or label filter." },
         threadId: { type: "string", description: "Thread id filter." },
