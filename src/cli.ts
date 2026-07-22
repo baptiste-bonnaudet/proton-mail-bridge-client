@@ -256,6 +256,12 @@ function summarizeThreadList(value: Record<string, unknown>): string {
 }
 
 function printToolCallResult(result: Record<string, unknown>, wantJson: boolean): void {
+  // A failed tool call must fail the process too, so scripts and cron jobs
+  // can rely on the exit code instead of parsing output.
+  if (result.isError === true) {
+    process.exitCode = 1;
+  }
+
   if (wantJson) {
     process.stdout.write(json(result));
     return;
@@ -306,9 +312,17 @@ async function withMcpClient<T>(run: (client: Client) => Promise<T>): Promise<T>
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [cliEntryPath()],
-    env: Object.fromEntries(
-      Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
-    ),
+    env: {
+      ...Object.fromEntries(
+        Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+      ),
+      // The spawned server only exists for the duration of one CLI command;
+      // it must not kick off startup/background syncs or IDLE watches that
+      // would race a long-running server's sync against the same index.
+      PROTONMAIL_AUTO_SYNC: "false",
+      PROTONMAIL_STARTUP_SYNC: "false",
+      PROTONMAIL_IDLE_WATCH: "false",
+    },
     stderr: "ignore",
   });
 
