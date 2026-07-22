@@ -2512,7 +2512,11 @@ function parseBooleanEnv(name: string, defaultValue: boolean): boolean {
   if (["0", "false", "no", "off"].includes(raw)) {
     return false;
   }
-  return defaultValue;
+  // Several of these flags are safety-relevant (READ_ONLY, ALLOW_SEND, ...);
+  // silently falling back to the default would turn a typo into a policy change.
+  throw new Error(
+    `${name} must be one of: 1, true, yes, on, 0, false, no, off. Got: ${process.env[name]}`,
+  );
 }
 
 function parseIntegerEnv(
@@ -2573,7 +2577,10 @@ export function buildConfigFromEnv(): ProtonMailConfig {
 
   const smtpPort = parseIntegerEnv("PROTONMAIL_SMTP_PORT", 587, 1, 65_535);
   const imapPort = parseIntegerEnv("PROTONMAIL_IMAP_PORT", 1143, 1, 65_535);
-  const debug = parseBooleanEnv("DEBUG", false);
+  // DEBUG is a shared namespace (e.g. DEBUG=express:*), so unrecognized
+  // values mean "not ours" rather than a typo; don't reject them.
+  const debugRaw = process.env.DEBUG?.trim().toLowerCase() ?? "";
+  const debug = ["1", "true", "yes", "on"].includes(debugRaw);
   const readOnly = parseBooleanEnv("PROTONMAIL_READ_ONLY", false);
   const allowSend = parseBooleanEnv("PROTONMAIL_ALLOW_SEND", !readOnly);
   const allowRemoteDraftSync = parseBooleanEnv(
@@ -2584,7 +2591,7 @@ export function buildConfigFromEnv(): ProtonMailConfig {
   const syncInterval = parseIntegerEnv("PROTONMAIL_SYNC_INTERVAL_MINUTES", 5, 1, 24 * 60);
   const idleWatchEnabled = parseBooleanEnv("PROTONMAIL_IDLE_WATCH", autoSync);
   const idleMaxSeconds = parseIntegerEnv("PROTONMAIL_IDLE_MAX_SECONDS", 30, 5, 300);
-  const confirmDestructive = parseBooleanEnv("PROTONMAIL_CONFIRM_DESTRUCTIVE", false);
+  const confirmDestructive = parseBooleanEnv("PROTONMAIL_CONFIRM_DESTRUCTIVE", true);
   const allowEmptyFolder = parseBooleanEnv("PROTONMAIL_ALLOW_EMPTY_FOLDER", false);
   const restrictOutboundToSelf = parseBooleanEnv("PROTONMAIL_RESTRICT_OUTBOUND_TO_SELF", false);
   const allowFileDownloadDir = process.env.PROTONMAIL_ALLOW_FILE_DOWNLOAD_DIR?.trim() || undefined;

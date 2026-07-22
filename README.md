@@ -417,7 +417,7 @@ All flags work in both the MCP server and CLI:
 PROTONMAIL_TOOL_TIER=core            # expose 20 core tools instead of all 76 — saves context window
 PROTONMAIL_READ_ONLY=true            # disable all write operations
 PROTONMAIL_ALLOW_SEND=false          # disable SMTP sends only (other writes still work)
-PROTONMAIL_CONFIRM_DESTRUCTIVE=true  # require confirmed:true on send, reply, forward, delete
+PROTONMAIL_CONFIRM_DESTRUCTIVE=false # default true: send, reply, forward, delete require confirmed:true
 PROTONMAIL_ALLOWED_ACTIONS='mark_read,archive,trash'  # per-action allowlist
 ```
 
@@ -454,7 +454,7 @@ PROTONMAIL_READ_ONLY='false'
 PROTONMAIL_ALLOW_SEND='true'
 PROTONMAIL_ALLOW_REMOTE_DRAFT_SYNC='true'
 PROTONMAIL_ALLOWED_ACTIONS='mark_read,mark_unread,star,unstar,archive,trash,restore'
-PROTONMAIL_CONFIRM_DESTRUCTIVE='false'
+PROTONMAIL_CONFIRM_DESTRUCTIVE='true'   # default: destructive tools require confirmed:true
 
 # Sync
 PROTONMAIL_AUTO_SYNC='true'

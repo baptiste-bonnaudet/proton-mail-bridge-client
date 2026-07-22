@@ -24,7 +24,23 @@ const KEYS = [
   "PROTONMAIL_SYNC_INTERVAL_MINUTES",
   "PROTONMAIL_IDLE_WATCH",
   "PROTONMAIL_IDLE_MAX_SECONDS",
+  "PROTONMAIL_CONFIRM_DESTRUCTIVE",
 ];
+
+function withCleanEnv(run) {
+  const previous = Object.fromEntries(KEYS.map((key) => [key, process.env[key]]));
+  try {
+    return run();
+  } finally {
+    for (const key of KEYS) {
+      if (previous[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = previous[key];
+      }
+    }
+  }
+}
 
 test("buildConfigFromEnv reads *_FILE secrets and runtime policy flags", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "protonmail-env-test-"));
@@ -77,6 +93,29 @@ test("buildConfigFromEnv reads *_FILE secrets and runtime policy flags", async (
     }
     await rm(dataDir, { recursive: true, force: true });
   }
+});
+
+test("buildConfigFromEnv rejects invalid boolean values instead of silently defaulting", () => {
+  withCleanEnv(() => {
+    process.env.PROTONMAIL_USERNAME = "owner@example.com";
+    process.env.PROTONMAIL_PASSWORD = "bridge-secret";
+    process.env.PROTONMAIL_READ_ONLY = "ture";
+
+    assert.throws(() => buildConfigFromEnv(), /PROTONMAIL_READ_ONLY must be one of/);
+  });
+});
+
+test("buildConfigFromEnv defaults confirmDestructive to true", () => {
+  withCleanEnv(() => {
+    process.env.PROTONMAIL_USERNAME = "owner@example.com";
+    process.env.PROTONMAIL_PASSWORD = "bridge-secret";
+    delete process.env.PROTONMAIL_READ_ONLY;
+    delete process.env.PROTONMAIL_CONFIRM_DESTRUCTIVE;
+
+    assert.equal(buildConfigFromEnv().runtime.confirmDestructive, true);
+    process.env.PROTONMAIL_CONFIRM_DESTRUCTIVE = "false";
+    assert.equal(buildConfigFromEnv().runtime.confirmDestructive, false);
+  });
 });
 
 test("buildConfigFromEnv reads *_COMMAND secrets", () => {
