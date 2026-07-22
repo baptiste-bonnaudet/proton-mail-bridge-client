@@ -2661,6 +2661,7 @@ export function createServer(
   const analyticsService = new AnalyticsService();
   const auditService = new AuditService(config);
   const localIndexService = new LocalIndexService(config, logger);
+  imapService.setUidValidityResolver((folder) => localIndexService.getFolderUidValidity(folder));
   const draftStore = new DraftStoreService(config, logger);
   const backgroundSyncService = new BackgroundSyncService(
     config,

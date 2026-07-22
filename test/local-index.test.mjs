@@ -42,6 +42,38 @@ function createConfig(dataDir) {
   };
 }
 
+test("getFolderUidValidity returns the checkpointed value per folder", async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), "protonmail-index-test-"));
+  const service = new LocalIndexService(createConfig(dataDir));
+
+  try {
+    await service.recordSnapshot({
+      syncedAt: "2026-03-24T12:00:00.000Z",
+      folders: [
+        {
+          path: "INBOX",
+          name: "INBOX",
+          delimiter: "/",
+          specialUse: "\\Inbox",
+          listed: true,
+          subscribed: true,
+          flags: [],
+          messages: 0,
+          unseen: 0,
+        },
+      ],
+      folderStats: [{ folder: "INBOX", fetched: 0, total: 0, uidValidity: "12345" }],
+      emails: [],
+    });
+
+    assert.equal(await service.getFolderUidValidity("INBOX"), "12345");
+    assert.equal(await service.getFolderUidValidity("Archive"), undefined);
+  } finally {
+    await service.close?.();
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test("local index groups replies by In-Reply-To even when subject changes", async () => {
   const dataDir = await mkdtemp(join(tmpdir(), "protonmail-index-test-"));
   const service = new LocalIndexService(createConfig(dataDir));

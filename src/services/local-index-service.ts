@@ -863,6 +863,15 @@ export class LocalIndexService {
     return Object.fromEntries(snapshot.syncCheckpoints.map((checkpoint) => [checkpoint.folder, checkpoint]));
   }
 
+  /** Last-synced UIDVALIDITY for a folder, without loading the full snapshot. */
+  async getFolderUidValidity(folder: string): Promise<string | undefined> {
+    const db = await this.ensureDb();
+    const row = db
+      .prepare(`SELECT uid_validity FROM sync_state WHERE folder = ?`)
+      .get(folder) as { uid_validity?: string } | undefined;
+    return row?.uid_validity ?? undefined;
+  }
+
   async getInboxDigest(input: {
     limit?: number;
     minAgeHours?: number;

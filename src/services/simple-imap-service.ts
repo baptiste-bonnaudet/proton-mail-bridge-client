@@ -259,12 +259,23 @@ export class SimpleIMAPService {
   private _lastOpTs = 0;
   private _connectingPromise?: Promise<void>;
   private readonly _idleActive = new Map<string, boolean>();
+  private uidValidityResolver?: (folder: string) => Promise<string | undefined>;
 
   constructor(
     private readonly config: ProtonMailConfig,
     private readonly log: Logger = logger,
     private readonly opDelayMs = 0,
   ) {}
+
+  /**
+   * Provide the last-synced UIDVALIDITY per folder (from the local index).
+   * Mutating operations that are not given an explicit uidValidity check the
+   * resolved value against the live mailbox and refuse to act on a stale UID,
+   * so a Bridge-side mailbox reset cannot make us act on the wrong message.
+   */
+  setUidValidityResolver(resolver: (folder: string) => Promise<string | undefined>): void {
+    this.uidValidityResolver = resolver;
+  }
 
   async connect(): Promise<void> {
     if (this.client?.usable) {
@@ -912,7 +923,7 @@ export class SimpleIMAPService {
     let notApplied: string[] = [];
 
     await this.withMailbox(folder, false, async (client) => {
-      this.assertMailboxUidValidity(client, uidValidity);
+      await this.assertKnownUidValidity(client, folder, uidValidity);
       if (isRead) {
         await client.messageFlagsAdd(String(uid), ["\\Seen"], { uid: true });
       } else {
@@ -936,7 +947,7 @@ export class SimpleIMAPService {
     let notApplied: string[] = [];
 
     await this.withMailbox(folder, false, async (client) => {
-      this.assertMailboxUidValidity(client, uidValidity);
+      await this.assertKnownUidValidity(client, folder, uidValidity);
       if (isStarred) {
         await client.messageFlagsAdd(String(uid), ["\\Flagged"], { uid: true });
       } else {
@@ -962,7 +973,7 @@ export class SimpleIMAPService {
     let targetUid: number | undefined;
 
     await this.withMailbox(folder, false, async (client) => {
-      this.assertMailboxUidValidity(client, uidValidity);
+      await this.assertKnownUidValidity(client, folder, uidValidity);
       const moved = await client.messageMove(String(uid), targetFolder, { uid: true });
       if (moved === false) {
         throw new Error(`Server did not move email ${emailId} to ${targetFolder}`);
@@ -1003,7 +1014,7 @@ export class SimpleIMAPService {
     const { folder, uid } = parseEmailId(emailId);
 
     await this.withMailbox(folder, false, async (client) => {
-      this.assertMailboxUidValidity(client, uidValidity);
+      await this.assertKnownUidValidity(client, folder, uidValidity);
       const deleted = await client.messageDelete(String(uid), { uid: true });
       if (!deleted) {
         throw new Error(`Server did not delete email ${emailId}`);
@@ -1098,7 +1109,7 @@ export class SimpleIMAPService {
     let notApplied: string[] = [];
 
     await this.withMailbox(folder, false, async (client) => {
-      this.assertMailboxUidValidity(client, uidValidity);
+      await this.assertKnownUidValidity(client, folder, uidValidity);
       if (flagsToAdd.length > 0) {
         await client.messageFlagsAdd(String(uid), flagsToAdd, { uid: true });
       }
@@ -2459,6 +2470,25 @@ export class SimpleIMAPService {
     if (mailbox?.uidValidity?.toString() !== expectedUidValidity) {
       throw new ValidationError(UID_VALIDITY_MISMATCH_ERROR);
     }
+  }
+
+  private async assertKnownUidValidity(
+    client: ImapFlow,
+    folder: string,
+    expectedUidValidity?: string,
+  ): Promise<void> {
+    let expected = expectedUidValidity;
+    if (!expected && this.uidValidityResolver) {
+      try {
+        expected = await this.uidValidityResolver(folder);
+      } catch (error) {
+        this.log.warn("Could not resolve known UIDVALIDITY; skipping staleness guard", "IMAPService", {
+          folder,
+          error,
+        });
+      }
+    }
+    this.assertMailboxUidValidity(client, expected);
   }
 
   private async writeAttachmentToPath(
