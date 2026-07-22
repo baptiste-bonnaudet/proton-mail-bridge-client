@@ -306,6 +306,11 @@ export class SimpleIMAPService {
         logger: false,
         connectionTimeout: 15_000,
         greetingTimeout: 15_000,
+        // Inactivity cap so a stalled Bridge fails the command instead of
+        // hanging the tool call (and the mailbox lock behind it) for
+        // imapflow's multi-minute default. IDLE sits quietly by design, so
+        // keep the cap above the longest configured idle window.
+        socketTimeout: Math.max(60_000, this.config.runtime.idleMaxSeconds * 1000 + 30_000),
       });
 
       client.on("error", (error) => {

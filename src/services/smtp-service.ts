@@ -77,6 +77,12 @@ export class SMTPService {
           pass: this.config.smtp.password,
         },
         tls: isLocalhost ? { rejectUnauthorized: false } : undefined,
+        // Fail fast on a stalled Bridge instead of nodemailer's defaults
+        // (2 min connect, 10 min socket). Timeouts are inactivity-based, so
+        // large attachment uploads that keep moving are unaffected.
+        connectionTimeout: 15_000,
+        greetingTimeout: 15_000,
+        socketTimeout: 60_000,
       });
     }
 
