@@ -1,8 +1,8 @@
 # Validation Status
 
-**Audit date:** 2026-03-24  
-**Repository:** `googlarz/proton-mail-bridge-mcp`  
-**Product:** `Proton Mail Bridge MCP`  
+**Audit date:** 2026-03-24
+**Repository:** `googlarz/proton-mail-bridge-mcp`
+**Product:** `Proton Mail Bridge MCP`
 **Version:** 1.6.0
 
 ## Summary
