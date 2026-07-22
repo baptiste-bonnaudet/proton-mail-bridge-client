@@ -7,6 +7,8 @@ on:
 
 jobs:
   publish:
+    # Only the canonical repo publishes to npm; forks tagging releases must not.
+    if: github.repository == 'googlarz/proton-mail-bridge-client'
     runs-on: ubuntu-latest
     permissions:
       contents: read
