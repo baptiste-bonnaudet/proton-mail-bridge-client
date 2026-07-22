@@ -219,6 +219,139 @@ test("dryRun previews the send without calling SMTP", async () => {
   }
 });
 
+test("markdownBody renders to HTML with the markdown kept as text fallback", async () => {
+  const { client, services, close } = await connectServer();
+  try {
+    const calls = stubSendPath(services);
+    await client.callTool({
+      name: "send_email",
+      arguments: { to: OWNER, subject: "s", markdownBody: "# Title\n\nSome **bold** text." },
+    });
+    assert.equal(calls.length, 1);
+    assert.ok(calls[0].htmlBody.includes("<h1>Title</h1>"));
+    assert.ok(calls[0].htmlBody.includes("<strong>bold</strong>"));
+    assert.ok(calls[0].body.includes("# Title"));
+    assert.equal(calls[0].isHtml, false);
+  } finally {
+    await close();
+  }
+});
+
+test("draft lifecycle: create, list, update, get, delete against the real store", async () => {
+  const { client, close } = await connectServer({ allowRemoteDraftSync: false });
+  try {
+    const created = await client.callTool({
+      name: "create_draft",
+      arguments: { to: OWNER, subject: "draft subject", body: "draft body" },
+    });
+    const createdPayload = JSON.parse(created.content[0].text);
+    const draftId = createdPayload.draft?.id ?? createdPayload.id;
+    assert.ok(draftId, "create_draft must return the draft id");
+
+    const listed = JSON.parse((await client.callTool({ name: "list_drafts", arguments: {} })).content[0].text);
+    assert.equal(listed.total, 1);
+    assert.equal(listed.drafts[0].subject, "draft subject");
+
+    await client.callTool({
+      name: "update_draft",
+      arguments: { draftId, subject: "updated subject" },
+    });
+    const fetched = JSON.parse(
+      (await client.callTool({ name: "get_draft", arguments: { draftId } })).content[0].text,
+    );
+    assert.equal(fetched.subject, "updated subject");
+    assert.equal(fetched.body, "draft body");
+
+    await client.callTool({ name: "delete_draft", arguments: { draftId, confirmed: true } });
+    const after = JSON.parse((await client.callTool({ name: "list_drafts", arguments: {} })).content[0].text);
+    assert.equal(after.total, 0);
+  } finally {
+    await close();
+  }
+});
+
+test("empty_folder is gated behind allowEmptyFolder and previews before acting", async () => {
+  const gated = await connectServer();
+  try {
+    await assert.rejects(
+      () => gated.client.callTool({ name: "empty_folder", arguments: { folder: "Trash" } }),
+      /PROTONMAIL_ALLOW_EMPTY_FOLDER/,
+    );
+  } finally {
+    await gated.close();
+  }
+
+  const { client, services, close } = await connectServer({ allowEmptyFolder: true });
+  try {
+    let emptied = false;
+    services.imapService.getFolderStats = async (folder) => ({ folder, messages: 12, unseen: 2 });
+    services.imapService.emptyFolder = async () => {
+      emptied = true;
+      return { folder: "Trash", deleted: 12 };
+    };
+    const preview = JSON.parse(
+      (await client.callTool({ name: "empty_folder", arguments: { folder: "Trash" } })).content[0].text,
+    );
+    assert.equal(preview.preview, true);
+    assert.equal(emptied, false, "unconfirmed call must not delete anything");
+  } finally {
+    await close();
+  }
+});
+
+test("get_folders and get_emails pass through the service results", async () => {
+  const { client, services, close } = await connectServer();
+  try {
+    services.imapService.getFolders = async () => [
+      { path: "INBOX", name: "INBOX", delimiter: "/", listed: true, subscribed: true, flags: [], messages: 3, unseen: 1 },
+    ];
+    const folders = JSON.parse((await client.callTool({ name: "get_folders", arguments: {} })).content[0].text);
+    assert.equal(folders[0].path, "INBOX");
+
+    services.imapService.getEmails = async () => ({
+      folder: "INBOX",
+      total: 1,
+      limit: 20,
+      offset: 0,
+      emails: [
+        {
+          id: "INBOX::7",
+          folder: "INBOX",
+          uid: 7,
+          seq: 1,
+          subject: "hello",
+          from: [{ address: "alice@acme.com" }],
+          to: [],
+          cc: [],
+          bcc: [],
+          replyTo: [],
+          labels: [],
+          flags: [],
+          attachments: [],
+          isRead: false,
+          isStarred: false,
+          hasAttachments: false,
+        },
+      ],
+    });
+    const result = await client.callTool({ name: "get_emails", arguments: { folder: "INBOX" } });
+    assert.equal(result.structuredContent.emails[0].id, "INBOX::7");
+    assert.equal(result.structuredContent.returned, 1);
+  } finally {
+    await close();
+  }
+});
+
+test("get_logs returns recent log entries without any service stubbing", async () => {
+  const { client, close } = await connectServer();
+  try {
+    const logs = await client.callTool({ name: "get_logs", arguments: { limit: 5 } });
+    assert.ok(Array.isArray(logs.structuredContent.entries));
+  } finally {
+    await close();
+  }
+});
+
 test("successful sends are audited with the body redacted", async () => {
   const { client, services, close } = await connectServer();
   try {
