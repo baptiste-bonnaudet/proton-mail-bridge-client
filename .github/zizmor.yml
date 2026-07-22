@@ -1,0 +1,13 @@
+# zizmor suppressions with rationale; everything else stays enforced.
+rules:
+  # publish.yml is upstream's npm release flow and is guarded to run only on
+  # the canonical repo. Switching it to npm trusted publishing (OIDC) is an
+  # upstream infrastructure decision a fork cannot make.
+  use-trusted-publishing:
+    ignore:
+      - publish.yml
+  # Low-confidence finding: setup-node does not cache unless `cache:` is set,
+  # and the explicit cache option was removed from the release workflow.
+  cache-poisoning:
+    ignore:
+      - publish.yml
