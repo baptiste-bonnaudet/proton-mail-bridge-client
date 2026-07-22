@@ -520,7 +520,7 @@ const TOOLS = [
       properties: {
         emailId: { type: "string", description: "Composite email id from previous tool output." },
         preferHtml: { type: "boolean", description: "Return raw HTML body instead of plain-text stripped version.", default: false },
-        maxBodyLength: { type: "number", description: "Truncate body at this many characters (1–500000)." },
+        maxBodyLength: { type: "number", description: "Truncate body at this many characters (1-500000). Defaults to 30000.", default: 30000 },
         showHeaders: { type: "boolean", description: "Include raw In-Reply-To and References headers in the response.", default: false },
       },
       required: ["emailId"],
@@ -3656,21 +3656,24 @@ export function createServer(
         case "get_email_by_id": {
           const detail = await imapService.getEmailById(requireString(args, "emailId"));
           const preferHtml = normalizeBoolean(args.preferHtml, false);
-          const maxBodyLength = normalizeLimit(args.maxBodyLength, undefined as unknown as number, 1, 500_000);
+          // Default cap so one long newsletter cannot flood the model context;
+          // callers can raise it explicitly up to 500k.
+          const maxBodyLength = normalizeLimit(args.maxBodyLength, 30_000, 1, 500_000);
           const showHeaders = normalizeBoolean(args.showHeaders, false);
 
           let displayBody = preferHtml
             ? (typeof detail.html === "string" ? detail.html : detail.text ?? "")
             : (detail.text ?? "");
-          if (maxBodyLength) {
-            const codepoints = [...displayBody];
-            if (codepoints.length > maxBodyLength) {
-              displayBody = codepoints.slice(0, maxBodyLength).join("") + `\n[truncated at ${maxBodyLength} chars]`;
-            }
+          const codepoints = [...displayBody];
+          if (codepoints.length > maxBodyLength) {
+            displayBody = codepoints.slice(0, maxBodyLength).join("") + `\n[truncated at ${maxBodyLength} chars; pass maxBodyLength for more]`;
           }
 
           const output: Record<string, unknown> = { ...detail, text: displayBody };
-          if (!preferHtml) delete output.html;
+          // The truncated displayBody already carries the chosen content;
+          // shipping the full html alongside would defeat the cap.
+          if (preferHtml) output.html = displayBody;
+          else delete output.html;
           if (showHeaders) {
             output.rawHeaders = {
               "in-reply-to": detail.headers["in-reply-to"],

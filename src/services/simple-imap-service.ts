@@ -248,6 +248,7 @@ function createParsedAttachmentId(
 }
 
 const MAX_CACHED_MESSAGES = 1000;
+const SEARCH_DATE_SCAN_CAP = 2000;
 
 export class SimpleIMAPService {
   private client?: ImapFlow;
@@ -648,6 +649,11 @@ export class SimpleIMAPService {
       const fetchQuery = input.includeSnippet ? FETCH_DETAIL_QUERY : FETCH_SUMMARY_QUERY;
 
       if (input.beforeUid !== undefined) {
+        // No UIDs can exist below 1; without this guard the range becomes
+        // "1:0", which IMAP normalizes to 0:1 and returns UID 1.
+        if (input.beforeUid <= 1) {
+          return { folder, total, limit, offset, emails: [] };
+        }
         // UID-based pagination: search for UIDs below the given upper bound
         const searchQuery: SearchObject = { uid: `1:${input.beforeUid - 1}` };
         const uids = await client.search(searchQuery, { uid: true });
@@ -735,11 +741,18 @@ export class SimpleIMAPService {
 
         // UID order does not track date order (e.g. after a cross-provider import),
         // so a naive slice(-limit) on UIDs can silently drop the newest messages.
-        // Fetch cheap INTERNALDATE-only headers first, sort by date, then pick the target UIDs.
+        // Fetch INTERNALDATE only (not envelope/bodystructure), sort by date,
+        // then pick the target UIDs. The dating pass is bounded to the highest
+        // UIDs so a broad query over a huge folder cannot fetch metadata for
+        // every message in the account.
         let targetUids = uids;
         if (uids.length > limit) {
+          const window =
+            uids.length > SEARCH_DATE_SCAN_CAP
+              ? [...uids].sort((a, b) => b - a).slice(0, SEARCH_DATE_SCAN_CAP)
+              : uids;
           const dated: { uid: number; date: number }[] = [];
-          for await (const message of client.fetch(uids, FETCH_INDEX_QUERY, { uid: true })) {
+          for await (const message of client.fetch(window, { uid: true, internalDate: true }, { uid: true })) {
             dated.push({ uid: message.uid, date: new Date(message.internalDate ?? 0).getTime() });
           }
           targetUids = pickNewestUids(dated, limit);
